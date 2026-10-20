@@ -5,3 +5,5 @@ results/
 data/
 *.joblib
 .env
+.deploy.lock
+deploy.log
