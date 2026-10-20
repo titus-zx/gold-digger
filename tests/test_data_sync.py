@@ -16,7 +16,7 @@ class DataSyncTests(unittest.TestCase):
         with TemporaryDirectory() as d:
             frame = pd.DataFrame({"Open":[100]*70,"High":[105]*70,"Low":[95]*70,"Close":[102]*70,"Volume":[1000]*70},index=pd.date_range("2026-06-01",periods=70,name="Date"))
             with patch("yfinance.download",return_value=frame) as download:
-                count = sync(Path(d)/"prices.csv")
+                count = sync(Path(d)/"prices.csv", provider="yahoo")
                 self.assertEqual(count, 350)
                 self.assertFalse(download.call_args.kwargs["auto_adjust"])
                 self.assertEqual(pd.read_csv(Path(d)/"prices.csv").iloc[0]["open"], 100)
@@ -26,7 +26,7 @@ class DataSyncTests(unittest.TestCase):
             path.write_text("original")
             with patch("yfinance.download",side_effect=RuntimeError("network unavailable")):
                 with self.assertRaises(RuntimeError):
-                    sync(path)
+                    sync(path, provider="yahoo")
             self.assertEqual(path.read_text(),"original")
     def test_gold_missing(self):
         with TemporaryDirectory() as d:

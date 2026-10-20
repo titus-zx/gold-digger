@@ -1,4 +1,6 @@
-"""Dukascopy spot XAU/USD bid H1 ingestion and atomic forecast publication.
+"""XAUUSD H1 ingestion and atomic forecast publication.
+
+Default: unofficial free TradingView OANDA feed. Optional: Dukascopy bid.
 
 JSON delta format follows dukascopy-node's data-normaliser and url-generator.
 Missing hours are kept missing rather than padded with flat candles.
@@ -103,10 +105,19 @@ def download(now=None, months=12, fetch=fetch_month):
     return frame
 
 
-def refresh(data_path, results_path, now=None, fetch=fetch_month, trainer=None):
+def refresh(data_path, results_path, now=None, fetch=fetch_month, trainer=None, provider=None):
     from forecaster import run
     now = pd.Timestamp.now(tz="UTC") if now is None else pd.Timestamp(now)
-    frame = download(now=now, fetch=fetch)
+    provider = provider or os.environ.get("GOLD_PROVIDER", "tradingview")
+    if provider == "tradingview":
+        from .tradingview import gold_history, SOURCE as TV_SOURCE
+        frame = gold_history(now=now)
+        source, symbol, price_type = TV_SOURCE, "OANDA:XAUUSD", "provider quote"
+    elif provider == "dukascopy":
+        frame = download(now=now, fetch=fetch)
+        source, symbol, price_type = SOURCE, "XAUUSD", "bid"
+    else:
+        raise ValueError("GOLD_PROVIDER must be tradingview or dukascopy")
     print(f"{pd.Timestamp.now(tz='UTC')} training XAUUSD on {len(frame)} candles", flush=True)
     data_path, results_path = Path(data_path), Path(results_path)
     data_path.parent.mkdir(parents=True, exist_ok=True)
@@ -122,7 +133,7 @@ def refresh(data_path, results_path, now=None, fetch=fetch_month, trainer=None):
         report = json.loads(report_path.read_text())
         if any(not report.get(f"{h}h", {}).get("latest_forecast") for h in (1, 4, 8, 24)):
             raise ValueError("Training did not produce all four forecast horizons")
-        report["metadata"] = {"source": SOURCE, "price_type": "bid", "symbol": "XAUUSD",
+        report["metadata"] = {"source": source, "price_type": price_type, "symbol": symbol,
                               "generated_at_utc": now.isoformat(),
                               "data_as_of_utc": frame.time.iloc[-1].isoformat(),
                               "rows": len(frame)}

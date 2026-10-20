@@ -26,6 +26,7 @@ services:
     environment:
       IDX_DATA: /app/data/idx_daily.csv
       IDX_SYNC_SECONDS: "21600"
+      IDX_PROVIDER: "${IDX_PROVIDER:-tradingview}"
     volumes:
       - ./data:/app/data
   gold-sync:
@@ -38,6 +39,7 @@ services:
       GOLD_DATA: /app/data/xau_h1.csv
       GOLD_RESULTS: /app/results/gold
       GOLD_SYNC_SECONDS: "21600"
+      GOLD_PROVIDER: "${GOLD_PROVIDER:-tradingview}"
       OMP_NUM_THREADS: "1"
       OPENBLAS_NUM_THREADS: "1"
     volumes:

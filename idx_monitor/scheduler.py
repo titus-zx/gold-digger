@@ -8,9 +8,11 @@ if __name__ == "__main__":
     interval = max(3600, int(os.environ.get("IDX_SYNC_SECONDS", "21600")))
     path = os.environ.get("IDX_DATA", "/app/data/idx_daily.csv")
     while True:
+        delay = interval
         try:
             count = sync(path)
             print(f"{datetime.now(timezone.utc).isoformat()} updated {count} rows", flush=True)
         except Exception as exc:
+            delay = 60
             print(f"{datetime.now(timezone.utc).isoformat()} sync failed: {exc}", flush=True)
-        time.sleep(interval)
+        time.sleep(delay)

@@ -74,7 +74,7 @@ class GoldSyncTests(unittest.TestCase):
                 (args.out / 'report.json').write_text('{}')
             with patch('idx_monitor.gold_sync.download', return_value=frame):
                 with self.assertRaises(ValueError):
-                    refresh(data, report.parent, trainer=incomplete)
+                    refresh(data, report.parent, trainer=incomplete, provider="dukascopy")
             self.assertEqual(data.read_text(), 'original data')
             self.assertEqual(json.loads(report.read_text()), {'original': True})
 
@@ -88,7 +88,7 @@ class GoldSyncTests(unittest.TestCase):
                           'direction': 'NEUTRAL'}} for h in (1, 4, 8, 24)}
                 (args.out / 'report.json').write_text(json.dumps(report))
             with patch('idx_monitor.gold_sync.download', return_value=frame):
-                refresh(root / 'data.csv', root / 'results', now=now, trainer=trained)
+                refresh(root / 'data.csv', root / 'results', now=now, trainer=trained, provider="dukascopy")
             state = gold_dashboard(root / 'results')
             self.assertEqual(state['status'], 'ok')
             self.assertEqual(len(state['forecasts']), 4)

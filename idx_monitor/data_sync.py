@@ -1,4 +1,4 @@
-"""Best-effort Yahoo Finance daily IDX data import; unofficial and may be delayed."""
+"""Best-effort daily IDX import: free TradingView by default, optional Yahoo."""
 import argparse
 import os
 import logging
@@ -34,13 +34,24 @@ def normalize_download(frame, ticker):
         raise ValueError(f"Insufficient valid rows for {ticker}: {len(d)}")
     return d
 
-def sync(destination, period="2y"):
-    import yfinance as yf
+def sync(destination, period="2y", provider=None):
+    provider = provider or os.environ.get("IDX_PROVIDER", "tradingview")
+    if provider not in ("tradingview", "yahoo"):
+        raise ValueError("IDX_PROVIDER must be tradingview or yahoo")
     frames = []
     for ticker in TICKERS:
-        data = yf.download(f"{ticker}.JK", period=period, interval="1d",
-                           auto_adjust=False, progress=False, threads=False)
-        frames.append(normalize_download(data, ticker))
+        if provider == "tradingview":
+            from .tradingview import get_bars, completed_idx, SOURCE
+            data = completed_idx(get_bars(f"IDX:{ticker}", "1D", 500))
+            source, feed = SOURCE, f"IDX:{ticker}"
+        else:
+            import yfinance as yf
+            data = yf.download(f"{ticker}.JK", period=period, interval="1d",
+                               auto_adjust=False, progress=False, threads=False)
+            source, feed = "Yahoo Finance unofficial", f"{ticker}.JK"
+        normalized = normalize_download(data, ticker)
+        normalized["source"], normalized["feed"] = source, feed
+        frames.append(normalized)
     result = pd.concat(frames, ignore_index=True).sort_values(["ticker","date"])
     result = result.drop_duplicates(["ticker","date"], keep="last")
     destination = Path(destination)

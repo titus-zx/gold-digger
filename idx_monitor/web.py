@@ -32,7 +32,8 @@ def dashboard():
         for k in ("close", "ema20", "ema50", "rsi14"):
             row[k] = round(float(row[k]), 2) if row[k] == row[k] else None
         rows.append(row)
-    return {"status": "ok", "capital": CAPITAL, "signals": rows, **result}
+    source = ", ".join(sorted(raw.source.dropna().unique())) if "source" in raw else "Legacy local CSV"
+    return {"status": "ok", "source": source, "capital": CAPITAL, "signals": rows, **result}
 
 def render(state):
     esc = lambda x: html.escape(str(x), quote=True)
@@ -56,7 +57,7 @@ body{{font:15px system-ui,sans-serif;background:#0b1220;color:#e8edf6;margin:0;p
 </style></head><body><nav><a href="/">IDX Monitor</a> | <a href="/gold">XAUUSD Forecast</a></nav><h1>Gold Digger <span class="muted">/ IDX Monitor</span></h1><small>Daily signals • Long-only paper trading • Not investment advice</small>
 <div class="grid"><div class="card">Starting capital<div class="value">Rp {state['capital']:,.0f}</div></div><div class="card">Paper equity<div class="value">Rp {equity:,.0f}</div></div><div class="card">Cash<div class="value">Rp {state.get('cash',state['capital']):,.0f}</div></div><div class="card">Executed paper trades<div class="value">{len(state.get('trades',[]))}</div></div></div>
 <p class="warn">{message}</p><section><h2>Latest signals</h2><table><thead><tr><th>Ticker</th><th>As of</th><th>Close</th><th>RSI14</th><th>Signal</th></tr></thead><tbody>{rows or '<tr><td colspan="5">No data yet</td></tr>'}</tbody></table></section>
-{chart}<section><h2>Recent simulated trades</h2><table><thead><tr><th>Date</th><th>Ticker</th><th>Side</th><th>Shares</th><th>Price</th></tr></thead><tbody>{trades or '<tr><td colspan="5">No trades yet</td></tr>'}</tbody></table></section><p class="muted">Source: local CSV only. No live exchange feed. Auto-refresh every 5 minutes. <a href="/api/status">JSON API</a></p></body></html>"""
+{chart}<section><h2>Recent simulated trades</h2><table><thead><tr><th>Date</th><th>Ticker</th><th>Side</th><th>Shares</th><th>Price</th></tr></thead><tbody>{trades or '<tr><td colspan="5">No trades yet</td></tr>'}</tbody></table></section><p class="muted">Source: {esc(state.get("source", "Local CSV"))}. Completed daily candles. Auto-refresh every 5 minutes. <a href="/api/status">JSON API</a></p></body></html>"""
 
 
 def render_gold(state):
@@ -79,7 +80,7 @@ def render_gold(state):
     msg = esc(state.get("message", "Forecasts are saved model results, not live quotes."))
     meta = state.get("metadata", {})
     provenance = " | ".join(f"{label}: {esc(meta.get(key, '-'))}" for key, label in (
-        ("source", "Source"), ("data_as_of_utc", "Data UTC"), ("generated_at_utc", "Trained UTC")))
+        ("source", "Source"), ("symbol", "Feed"), ("data_as_of_utc", "Data UTC"), ("generated_at_utc", "Trained UTC")))
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta http-equiv="refresh" content="300"><title>XAUUSD | Gold Digger</title>
