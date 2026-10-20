@@ -25,14 +25,13 @@ uname -m
 git clone https://github.com/titus-zx/gold-digger.git
 cd gold-digger
 mkdir -p data
-docker compose pull
-docker compose up -d
+docker compose up -d --build
 curl -fsS http://127.0.0.1:8080/health
 ```
 
 The dashboard is bound to localhost at http://127.0.0.1:8080. It works without market data but shows awaiting_data until you provide `data/idx_daily.csv` with `date,ticker,open,high,low,close,volume`.
 
-If GHCR denies pulling, make the package public or login with a scoped read:packages token using `docker login ghcr.io`. Check GitHub Actions to ensure the image was published. For ARM64, ensure a compatible GHCR image exists; the current GitHub build runs on amd64 and is not configured as a multi-arch build.
+Docker Compose builds the application image locally from the repository Dockerfile; no GHCR login is needed. Docker still downloads the Python base image and Python packages. The local build uses the host architecture.
 
 ## Auto-deploy after push
 
@@ -44,7 +43,7 @@ systemctl list-timers gold-digger-update.timer
 sudo journalctl -u gold-digger-update.service -n 100 --no-pager
 ```
 
-The systemd timer checks for new commits/images every 5 minutes after GitHub Actions publishes them. No incoming firewall ports needed. Disable the older cron updater if previously installed.
+The systemd timer checks GitHub for new commits every 5 minutes, builds the image locally, and restarts the container. GitHub Actions publication is not required. No incoming firewall ports needed. Disable the older cron updater if previously installed.
 
 ## Secure access
 
