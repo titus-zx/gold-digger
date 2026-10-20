@@ -21,8 +21,8 @@ fi
 git merge --ff-only origin/main
 docker compose config --quiet
 # Build from source on the home machine; no GHCR dependency.
-docker compose build --pull gold-digger
-docker compose up -d --no-deps gold-digger
+docker compose build --pull
+docker compose up -d
 healthy=0
 for attempt in $(seq 1 20); do
   if curl --fail --silent --max-time 3 http://127.0.0.1:8080/health >/dev/null; then
