@@ -1,6 +1,9 @@
 services:
   gold-digger:
-    image: ghcr.io/titus-zx/gold-digger:main
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: gold-digger:local
     restart: unless-stopped
     ports:
       - "127.0.0.1:8080:8080"
