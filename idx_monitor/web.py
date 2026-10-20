@@ -39,13 +39,24 @@ def render(state):
     rows = "".join("<tr>" + "".join(f"<td>{esc(r.get(k, '-'))}</td>" for k in ("ticker","date","close","rsi14","signal")) + "</tr>" for r in state["signals"])
     trades = "".join("<tr>" + "".join(f"<td>{esc(t.get(k, '-'))}</td>" for k in ("date","ticker","side","shares","price")) + "</tr>" for t in state.get("trades", [])[-20:])
     equity = state.get("final_equity", state["capital"])
+    curve = state.get("equity_curve", [])
+    points = [float(p["equity"]) for p in curve if p.get("equity") is not None]
+    chart = ""
+    if len(points) > 1:
+        lo, hi = min(points), max(points)
+        coords = " ".join(
+            f"{i * 800 / (len(points)-1):.1f},{170-(value-lo)*150/(hi-lo or 1):.1f}"
+            for i, value in enumerate(points)
+        )
+        chart = f'<section><h2>Simulated equity curve</h2><svg viewBox="0 0 800 190" role="img" aria-label="Paper equity curve" style="width:100%;background:#172338"><polyline points="{coords}" stroke="#63b7f4" stroke-width="3" fill="none"/></svg></section>'
+
     message = esc(state.get("message", "Research-only simulation; no real trades executed."))
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="refresh" content="300"><title>Gold Digger • IDX Monitor</title><style>
 body{{font:15px system-ui,sans-serif;background:#0b1220;color:#e8edf6;margin:0;padding:28px;max-width:1100px;margin:auto}}h1{{margin-bottom:5px}}small,.muted{{color:#9caec6}}.grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px;margin:24px 0}}.card{{background:#172338;border:1px solid #2b3a51;border-radius:14px;padding:18px}}.value{{font-size:25px;font-weight:700}}table{{border-collapse:collapse;width:100%;background:#172338;border-radius:12px;overflow:hidden}}td,th{{padding:12px;text-align:left;border-bottom:1px solid #2b3a51}}th{{color:#a8bed7}}section{{margin:30px 0;overflow-x:auto}}a{{color:#77b8ff}}.warn{{padding:12px;background:#3b3020;border-radius:8px}}
 </style></head><body><nav><a href="/">IDX Monitor</a> | <a href="/gold">XAUUSD Forecast</a></nav><h1>Gold Digger <span class="muted">/ IDX Monitor</span></h1><small>Daily signals • Long-only paper trading • Not investment advice</small>
 <div class="grid"><div class="card">Starting capital<div class="value">Rp {state['capital']:,.0f}</div></div><div class="card">Paper equity<div class="value">Rp {equity:,.0f}</div></div><div class="card">Cash<div class="value">Rp {state.get('cash',state['capital']):,.0f}</div></div><div class="card">Executed paper trades<div class="value">{len(state.get('trades',[]))}</div></div></div>
 <p class="warn">{message}</p><section><h2>Latest signals</h2><table><thead><tr><th>Ticker</th><th>As of</th><th>Close</th><th>RSI14</th><th>Signal</th></tr></thead><tbody>{rows or '<tr><td colspan="5">No data yet</td></tr>'}</tbody></table></section>
-<section><h2>Recent simulated trades</h2><table><thead><tr><th>Date</th><th>Ticker</th><th>Side</th><th>Shares</th><th>Price</th></tr></thead><tbody>{trades or '<tr><td colspan="5">No trades yet</td></tr>'}</tbody></table></section><p class="muted">Source: local CSV only. No live exchange feed. Auto-refresh every 5 minutes. <a href="/api/status">JSON API</a></p></body></html>"""
+{chart}<section><h2>Recent simulated trades</h2><table><thead><tr><th>Date</th><th>Ticker</th><th>Side</th><th>Shares</th><th>Price</th></tr></thead><tbody>{trades or '<tr><td colspan="5">No trades yet</td></tr>'}</tbody></table></section><p class="muted">Source: local CSV only. No live exchange feed. Auto-refresh every 5 minutes. <a href="/api/status">JSON API</a></p></body></html>"""
 
 
 def render_gold(state):
