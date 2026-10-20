@@ -1,6 +1,7 @@
 """Best-effort Yahoo Finance daily IDX data import; unofficial and may be delayed."""
 import argparse
 import os
+import logging
 from pathlib import Path
 import pandas as pd
 
@@ -24,8 +25,13 @@ def normalize_download(frame, ticker):
     d["ticker"] = ticker
     d = d[["date", "ticker", *needed]].dropna()
     d = d[(d[["open","high","low","close"]] > 0).all(axis=1) & (d.volume >= 0)]
-    if d.empty:
-        raise ValueError(f"No valid rows for {ticker}")
+    valid = (d["high"] >= d[["open", "close", "low"]].max(axis=1) - 1e-6) & (d["low"] <= d[["open", "close"]].min(axis=1) + 1e-6)
+    rejected = int((~valid).sum())
+    if rejected:
+        logging.warning("%s: discarded %d invalid OHLC rows", ticker, rejected)
+    d = d.loc[valid].copy()
+    if len(d) < 60:
+        raise ValueError(f"Insufficient valid rows for {ticker}: {len(d)}")
     return d
 
 def sync(destination, period="2y"):
