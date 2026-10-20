@@ -19,8 +19,13 @@ def load_prices(path):
         df[col] = pd.to_numeric(df[col], errors="raise")
     if (df[["open", "high", "low", "close"]] <= 0).any().any() or (df.volume < 0).any():
         raise ValueError("Invalid price or volume")
-    if ((df.high < df[["open", "close", "low"]].max(axis=1)) | (df.low > df[["open", "close"]].min(axis=1))).any():
-        raise ValueError("Invalid OHLC range")
+    invalid = (df.high < df[["open", "close", "low"]].max(axis=1) - 1e-6) | (df.low > df[["open", "close"]].min(axis=1) + 1e-6)
+    if invalid.any():
+        import logging
+        logging.warning("Discarding %d inconsistent OHLC observations from IDX CSV", int(invalid.sum()))
+        df = df.loc[~invalid].copy()
+    if df.empty:
+        raise ValueError("No valid OHLC observations remain")
     return df.sort_values(["ticker", "date"]).reset_index(drop=True)
 
 def signals(df):
