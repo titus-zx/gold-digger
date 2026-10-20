@@ -39,7 +39,7 @@ def sync(destination, period="2y"):
     frames = []
     for ticker in TICKERS:
         data = yf.download(f"{ticker}.JK", period=period, interval="1d",
-                           auto_adjust=True, progress=False, threads=False)
+                           auto_adjust=False, progress=False, threads=False)
         frames.append(normalize_download(data, ticker))
     result = pd.concat(frames, ignore_index=True).sort_values(["ticker","date"])
     result = result.drop_duplicates(["ticker","date"], keep="last")
