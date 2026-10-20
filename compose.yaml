@@ -1,8 +1,6 @@
 services:
   gold-digger:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    build: .
     image: gold-digger:local
     restart: unless-stopped
     ports:
@@ -10,10 +8,22 @@ services:
     environment:
       IDX_CAPITAL: "50000000"
       IDX_DATA: /app/data/idx_daily.csv
+      GOLD_RESULTS: /app/results/gold
     volumes:
       - ./data:/app/data:ro
+      - ./results:/app/results:ro
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health',timeout=3)"]
       interval: 30s
       timeout: 5s
       retries: 3
+  idx-sync:
+    image: gold-digger:local
+    build: .
+    restart: unless-stopped
+    command: ["python", "-m", "idx_monitor.scheduler"]
+    environment:
+      IDX_DATA: /app/data/idx_daily.csv
+      IDX_SYNC_SECONDS: "21600"
+    volumes:
+      - ./data:/app/data
