@@ -8,7 +8,7 @@ from idx_monitor.gold import gold_dashboard
 
 class DataSyncTests(unittest.TestCase):
     def test_normalize(self):
-        frame = pd.DataFrame({"Open":[10],"High":[12],"Low":[9],"Close":[11],"Volume":[100]},index=pd.DatetimeIndex(["2026-10-19"],name="Date"))
+        frame = pd.DataFrame({"Open":[10]*70,"High":[12]*70,"Low":[9]*70,"Close":[11]*70,"Volume":[100]*70},index=pd.date_range("2026-07-01",periods=70,name="Date"))
         rows = normalize_download(frame, "BMRI")
         self.assertEqual(rows.iloc[0].ticker,"BMRI")
         self.assertEqual(rows.iloc[0].close,11)
