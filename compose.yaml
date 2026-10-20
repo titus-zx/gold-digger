@@ -18,6 +18,7 @@ services:
       timeout: 5s
       retries: 3
   idx-sync:
+    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
     image: gold-digger:local
     build: .
     restart: unless-stopped
