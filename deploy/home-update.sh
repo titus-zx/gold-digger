@@ -12,8 +12,9 @@ fi
 git fetch --quiet origin main
 current="$(git rev-parse HEAD)"
 remote="$(git rev-parse origin/main)"
-running="$(docker compose ps -q gold-digger)"
-if [[ "$current" == "$remote" && -n "$running" ]]; then
+running="$(docker compose ps --status running -q gold-digger)"
+sync_running="$(docker compose ps --status running -q idx-sync)"
+if [[ "$current" == "$remote" && -n "$running" && -n "$sync_running" ]]; then
   echo "No new commit; container exists"
   exit 0
 fi
@@ -23,6 +24,10 @@ docker compose config --quiet
 # Build from source on the home machine; no GHCR dependency.
 docker compose build --pull
 docker compose up -d
+if [[ -z "$(docker compose ps --status running -q idx-sync)" ]]; then
+  echo "IDX sync service is not running" >&2
+  exit 1
+fi
 healthy=0
 for attempt in $(seq 1 20); do
   if curl --fail --silent --max-time 3 http://127.0.0.1:8080/health >/dev/null; then
