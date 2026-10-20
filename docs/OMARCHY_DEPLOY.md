@@ -43,7 +43,7 @@ systemctl list-timers gold-digger-update.timer
 sudo journalctl -u gold-digger-update.service -n 100 --no-pager
 ```
 
-The systemd timer checks GitHub for new commits every 5 minutes, builds the image locally, and restarts the container. GitHub Actions publication is not required. No incoming firewall ports needed. Disable the older cron updater if previously installed.
+The systemd timer checks GitHub for new commits 10 seconds after the previous check finishes, builds the image locally, and restarts the container. GitHub Actions publication is not required. No incoming firewall ports needed. Disable the older cron updater if previously installed. After pulling an installer update, rerun `./deploy/install-systemd.sh` to apply the timer interval to the host. Builds take additional time; the interval does not guarantee deployment completes within 10 seconds.
 
 ## Secure access
 
@@ -65,4 +65,4 @@ curl -v http://127.0.0.1:8080/health
 sudo journalctl -u gold-digger-update.service -n 100 --no-pager
 ```
 
-See [HOME_DEPLOY.md](HOME_DEPLOY.md) for detailed limits, image access and rollback behavior. Paper trading uses historical CSV and does not place real orders.
+See [HOME_DEPLOY.md](HOME_DEPLOY.md) for detailed deployment instructions and limits. Paper trading uses historical CSV and does not place real orders.

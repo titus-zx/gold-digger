@@ -23,15 +23,18 @@ TimeoutStartSec=300
 EOF
 sudo tee "/etc/systemd/system/$UNIT.timer" >/dev/null <<EOF
 [Unit]
-Description=Check Gold Digger deployment every 5 minutes
+Description=Check Gold Digger deployment every 10 seconds
 [Timer]
 OnBootSec=2min
-OnUnitInactiveSec=5min
+OnUnitInactiveSec=10s
+AccuracySec=1s
+RandomizedDelaySec=0
 Persistent=true
 Unit=$UNIT.service
 [Install]
 WantedBy=timers.target
 EOF
 sudo systemctl daemon-reload
-sudo systemctl enable --now "$UNIT.timer"
+sudo systemctl enable "$UNIT.timer"
+sudo systemctl restart "$UNIT.timer"
 echo "Installed. Check: systemctl list-timers $UNIT.timer"

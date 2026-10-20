@@ -77,6 +77,9 @@ def render_gold(state):
             f'<p>Historical test accuracy: {pct("accuracy")}</p>{probs}</div>'
         )
     msg = esc(state.get("message", "Forecasts are saved model results, not live quotes."))
+    meta = state.get("metadata", {})
+    provenance = " | ".join(f"{label}: {esc(meta.get(key, '-'))}" for key, label in (
+        ("source", "Source"), ("data_as_of_utc", "Data UTC"), ("generated_at_utc", "Trained UTC")))
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta http-equiv="refresh" content="300"><title>XAUUSD | Gold Digger</title>
@@ -84,7 +87,7 @@ def render_gold(state):
     a{{color:#77b8ff}}.grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}}
     .card{{background:#172338;border:1px solid #2b3a51;border-radius:14px;padding:18px}}</style></head>
     <body><nav><a href="/">IDX Monitor</a> | <a href="/gold">XAUUSD Forecast</a></nav>
-    <h1>XAUUSD multi-horizon forecast</h1><p>{msg}</p><div class="grid">{"".join(cards)}</div>
+    <h1>XAUUSD multi-horizon forecast</h1><p>{msg}</p><p>{provenance}</p><div class="grid">{"".join(cards)}</div>
     <p>Research only; do not treat historical accuracy as a future guarantee.</p>
     <a href="/api/gold">Gold JSON API</a></body></html>"""
 

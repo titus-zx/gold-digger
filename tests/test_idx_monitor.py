@@ -1,4 +1,6 @@
 import unittest
+import tempfile
+from pathlib import Path
 import numpy as np
 import pandas as pd
 from idx_monitor.core import load_prices, signals, paper_trade
@@ -25,10 +27,16 @@ class MonitorTests(unittest.TestCase):
     def test_invalid_prices(self):
         data = self.sample()
         data.loc[0, "high"] = 1
-        path = "/tmp/idx_bad_prices.csv"
-        data.to_csv(path, index=False)
-        with self.assertRaises(ValueError):
-            load_prices(path)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "prices.csv"
+            data.to_csv(path, index=False)
+            valid = load_prices(path)
+            self.assertEqual(len(valid), len(data) - 1)
+            self.assertNotIn(data.loc[0, "date"], valid.date.tolist())
+            data["high"] = 1
+            data.to_csv(path, index=False)
+            with self.assertRaisesRegex(ValueError, "No valid OHLC"):
+                load_prices(path)
 
     def test_invalid_weights(self):
         with self.assertRaises(ValueError):

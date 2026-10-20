@@ -28,3 +28,18 @@ services:
       IDX_SYNC_SECONDS: "21600"
     volumes:
       - ./data:/app/data
+  gold-sync:
+    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
+    image: gold-digger:local
+    build: .
+    restart: unless-stopped
+    command: ["python", "-m", "idx_monitor.gold_sync"]
+    environment:
+      GOLD_DATA: /app/data/xau_h1.csv
+      GOLD_RESULTS: /app/results/gold
+      GOLD_SYNC_SECONDS: "21600"
+      OMP_NUM_THREADS: "1"
+      OPENBLAS_NUM_THREADS: "1"
+    volumes:
+      - ./data:/app/data
+      - ./results:/app/results
