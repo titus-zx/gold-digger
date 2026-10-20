@@ -24,6 +24,14 @@ git merge --ff-only origin/main
 docker compose config --quiet
 # Build from source on the home machine; no GHCR dependency.
 docker compose build --pull
+# Docker creates missing bind-mount directories as root. Repair the report
+# directory before starting the non-root forecast writer.
+mkdir -p data results
+if [[ ! -w results ]]; then
+  docker compose run --rm --no-deps --user 0:0 gold-sync \
+    chown "$(id -u):$(id -g)" /app/results
+fi
+mkdir -p results/gold
 docker compose up -d
 if [[ -z "$(docker compose ps --status running -q idx-sync)" ]]; then
   echo "IDX sync service is not running" >&2

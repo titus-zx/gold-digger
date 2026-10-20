@@ -1,52 +1,89 @@
 """Dukascopy spot XAU/USD bid H1 ingestion and atomic forecast publication.
 
-BI5 layout and scale follow dukascopy-node v1.46.3 decompressor,
-data-normaliser, and instrument metadata (XAUUSD decimalFactor=1000).
+JSON delta format follows dukascopy-node's data-normaliser and url-generator.
+Missing hours are kept missing rather than padded with flat candles.
 """
 import argparse
 import json
-import lzma
 import math
 import os
 from pathlib import Path
-import struct
 import tempfile
 import time
-from urllib.request import urlopen
 
+from curl_cffi import requests
 import pandas as pd
 
 SOURCE = "Dukascopy XAU/USD spot bid"
-BASE = "https://datafeed.dukascopy.com/datafeed/XAUUSD"
+BASE = "https://jetta.dukascopy.com/v1/candles/hour/XAU-USD/BID"
 
 
 def decode_month(payload, month, now):
+    data = json.loads(payload)
+    columns = ("times", "opens", "highs", "lows", "closes", "volumes")
+    if not all(isinstance(data.get(key), list) for key in columns):
+        raise ValueError("Malformed Dukascopy candle columns")
+    length = len(data["times"])
+    if any(len(data[key]) != length for key in columns):
+        raise ValueError("Mismatched Dukascopy candle columns")
+    if data.get("shift") != 3600000:
+        raise ValueError("Expected Dukascopy H1 candles")
+    multiplier = float(data["multiplier"])
+    if not math.isfinite(multiplier) or multiplier <= 0:
+        raise ValueError("Invalid Dukascopy price multiplier")
+    stamp = pd.Timestamp(data["timestamp"], unit="ms", tz="UTC")
     start = pd.Timestamp(month)
     end = start + pd.offsets.MonthBegin(1)
-    raw = lzma.decompress(payload)
-    if not raw or len(raw) % 24:
-        raise ValueError("Empty or malformed Dukascopy H1 archive")
+    # Each price column is an independent delta stream in integer price units.
+    units = [round(float(data[key]) / multiplier) for key in ("open", "high", "low", "close")]
     rows = []
-    for seconds, opened, closed, low, high, volume in struct.iter_unpack(">5If", raw):
-        stamp = start + pd.Timedelta(seconds=seconds)
-        if seconds % 3600 or stamp >= end:
-            raise ValueError("Invalid H1 timestamp in Dukascopy archive")
-        if not math.isfinite(volume) or volume <= 0:
-            continue  # No traded volume: do not treat market-closure placeholders as bars.
-        # Provider timestamps identify candle OPEN; models require candle CLOSE.
-        close_time = stamp + pd.Timedelta(hours=1)
-        if close_time > now:
-            continue
+    for values in zip(*(data[key] for key in columns)):
+        delta, *prices, volume = values
+        if not all(isinstance(value, (int, float)) and math.isfinite(value) for value in values):
+            raise ValueError("Non-finite Dukascopy candle value")
+        if delta < 0 or delta != int(delta) or any(price != int(price) for price in prices):
+            raise ValueError("Invalid Dukascopy candle delta")
+        stamp += pd.Timedelta(hours=delta)
+        units = [value + change for value, change in zip(units, prices)]
+        opened, high, low, closed = [round(value * multiplier, 8) for value in units]
+        if stamp < start or stamp >= end or stamp != stamp.floor("h"):
+            raise ValueError("Invalid H1 timestamp in Dukascopy response")
         if min(opened, closed, low, high) <= 0 or not low <= min(opened, closed) <= max(opened, closed) <= high:
-            raise ValueError("Invalid OHLC in Dukascopy archive")
-        rows.append((close_time, opened / 1000, high / 1000, low / 1000, closed / 1000))
+            raise ValueError("Invalid OHLC in Dukascopy response")
+        close_time = stamp + pd.Timedelta(hours=1)
+        if close_time <= now and volume > 0:
+            rows.append((close_time, opened, high, low, closed))
     return rows
 
 
 def fetch_month(month):
-    url = f"{BASE}/{month.year}/{month.month - 1:02d}/BID_candles_hour_1.bi5"
-    with urlopen(url, timeout=30) as response:
-        return response.read()
+    current = pd.Timestamp.now(tz="UTC").normalize().replace(day=1)
+    active = month == current
+    suffix = f"?from={month.value // 1_000_000}" if active else f"/{month.year}/{month.month}"
+    cache = Path(os.environ.get("GOLD_DATA", "/app/data/xau_h1.csv")).parent / "gold-cache" / f"{month:%Y-%m}.json"
+    if not active and cache.is_file():
+        return cache.read_bytes()
+    for attempt in range(3):
+        try:
+            response = requests.get(BASE + suffix, impersonate="chrome", timeout=20,
+                                    headers={"Referer":"https://www.dukascopy.com/",
+                                             "Origin":"https://www.dukascopy.com"})
+            if response.status_code != 200:
+                raise ValueError(f"Dukascopy returned HTTP {response.status_code}")
+            payload = response.content
+            # Validate before caching; never cache a challenge/error response.
+            decode_month(payload, month, pd.Timestamp.now(tz="UTC"))
+            if not active:
+                cache.parent.mkdir(parents=True, exist_ok=True)
+                with tempfile.NamedTemporaryFile(dir=cache.parent, delete=False) as handle:
+                    pending = Path(handle.name)
+                    handle.write(payload)
+                pending.replace(cache)
+            return payload
+        except (requests.RequestsError, ValueError):
+            if attempt == 2:
+                raise
+            time.sleep(2 * (attempt + 1))
 
 
 def download(now=None, months=12, fetch=fetch_month):
@@ -55,6 +92,7 @@ def download(now=None, months=12, fetch=fetch_month):
     rows = []
     for offset in range(months - 1, -1, -1):
         month = current - pd.offsets.MonthBegin(offset)
+        print(f"{pd.Timestamp.now(tz='UTC')} fetching XAUUSD {month:%Y-%m}", flush=True)
         rows.extend(decode_month(fetch(month), month, now))
     frame = pd.DataFrame(rows, columns=["time", "open", "high", "low", "close"])
     frame = frame.sort_values("time").reset_index(drop=True)
@@ -69,6 +107,7 @@ def refresh(data_path, results_path, now=None, fetch=fetch_month, trainer=None):
     from forecaster import run
     now = pd.Timestamp.now(tz="UTC") if now is None else pd.Timestamp(now)
     frame = download(now=now, fetch=fetch)
+    print(f"{pd.Timestamp.now(tz='UTC')} training XAUUSD on {len(frame)} candles", flush=True)
     data_path, results_path = Path(data_path), Path(results_path)
     data_path.parent.mkdir(parents=True, exist_ok=True)
     results_path.mkdir(parents=True, exist_ok=True)
@@ -108,18 +147,21 @@ def main():
     parser.add_argument("--once", action="store_true")
     args = parser.parse_args()
     interval = max(3600, int(os.environ.get("GOLD_SYNC_SECONDS", "21600")))
+    retry = max(30, int(os.environ.get("GOLD_RETRY_SECONDS", "60")))
     while True:
+        delay = interval
         try:
             rows = refresh(os.environ.get("GOLD_DATA", "/app/data/xau_h1.csv"),
                            os.environ.get("GOLD_RESULTS", "/app/results/gold"))
             print(f"{pd.Timestamp.now(tz='UTC')} gold updated {rows} rows", flush=True)
         except Exception as exc:
             print(f"{pd.Timestamp.now(tz='UTC')} gold sync failed: {exc}", flush=True)
+            delay = retry
             if args.once:
                 raise
         if args.once:
             return
-        time.sleep(interval)
+        time.sleep(delay)
 
 
 if __name__ == "__main__":

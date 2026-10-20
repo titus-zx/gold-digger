@@ -6,7 +6,9 @@ A background `idx-sync` service refreshes 2 years of **unofficial Yahoo Finance*
 ## XAUUSD
 The `gold-sync` service downloads twelve calendar months of public **Dukascopy XAU/USD spot bid H1 candles**, trains the existing 1/4/8/24-hour classifiers on startup, and repeats every six hours. It uses XAUUSD, not gold futures. No API key is needed. The provider may delay or stop serving archives; no availability guarantee is assumed.
 
-Archive timestamps are candle opens; ingestion converts them to UTC close timestamps and excludes unfinished candles. It validates OHLC ranges, timestamp alignment, duplicate timestamps, at least 1,600 observations, and a latest candle no older than four days (allowing weekends). Zero-volume placeholders are excluded; missing bars are not fabricated. Training must produce all four horizons before publication. A download or training failure preserves the last successful CSV and forecast report. The dashboard reads `report.json`, published with an atomic file replacement, and shows the source, candle timestamp, and training timestamp. Data older than six hours is marked `stale`, including during market closures.
+Ingestion uses Dukascopy's current HTTPS JSON H1 endpoint (`jetta.dukascopy.com`), including the active month via `?from=`. The older BI5 datafeed is no longer used. Delta-encoded prices/times are decoded without inventing flat candles for missing hours. Completed months are cached in `data/gold-cache`; the active month is always refreshed. Failed syncs retry after 60 seconds (`GOLD_RETRY_SECONDS`) instead of waiting six hours.
+
+Archive timestamps are candle opens; ingestion converts them to UTC close timestamps and excludes unfinished candles. It validates OHLC ranges, timestamp alignment, duplicate timestamps, at least 1,600 observations, and a latest candle no older than four days (allowing weekends). Zero-volume placeholders are excluded; missing bars are not fabricated. Forecast labels match the exact future UTC timestamp, allowing the 24-hour horizon to cross the daily session break. Training must produce all four horizons before publication. A download or training failure preserves the last successful CSV and forecast report. The dashboard reads `report.json`, published with an atomic file replacement, and shows the source, candle timestamp, and training timestamp. Data older than six hours is marked `stale`, including during market closures.
 
 ```bash
 mkdir -p data results/gold
@@ -15,7 +17,7 @@ docker compose logs --tail=50 gold-sync
 curl -s http://127.0.0.1:8080/api/gold
 ```
 
-Set `LOCAL_UID` and `LOCAL_GID` in `.env` to the owner of the data/results directories if they differ from 1000. The first training run takes longer than a web health check. To run once on the host:
+Set `LOCAL_UID` and `LOCAL_GID` in `.env` to the owner of the data/results directories if they differ from 1000. The updater repairs a root-owned `results` mount created by Docker before starting the writer. For a manual deployment with an existing root-owned directory, run `docker compose run --rm --no-deps --user 0:0 gold-sync chown "$(id -u):$(id -g)" /app/results` before creating `results/gold`. The first training run takes longer than a web health check. To run once on the host:
 
 ```bash
 GOLD_DATA=data/xau_h1.csv GOLD_RESULTS=results/gold python -m idx_monitor.gold_sync --once

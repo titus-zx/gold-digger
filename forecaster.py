@@ -117,6 +117,12 @@ def score(y, pred, prob=None):
         out["brier"] = float(np.mean(np.sum((prob-np.eye(3)[y])**2,axis=1)))
     return out
 
+def forward_delta(close, horizon):
+    """Match the price at the exact future UTC time, including session gaps."""
+    future = close.reindex(close.index + pd.Timedelta(hours=horizon))
+    future.index = close.index
+    return future - close
+
 def run(args):
     d = indicators(load_csv(args.xau),load_csv(args.dxy) if args.dxy else None)
     cols = ["atr","rsi","adx","pdi","mdi","ret1","ret4","ret24","ema_spread",
@@ -127,12 +133,10 @@ def run(args):
     out.mkdir(parents=True,exist_ok=True)
     report = {}
     for horizon in HORIZONS:
-        future_time = d.index.to_series().shift(-horizon)
-        exact = (future_time-d.index.to_series()).eq(pd.Timedelta(hours=horizon))
-        delta = d.close.shift(-horizon)-d.close
+        delta = forward_delta(d.close, horizon)
         band = args.threshold_atr*d.atr
         target = pd.Series(np.where(delta>band,2,np.where(delta< -band,0,1)),index=d.index)
-        valid = exact & delta.notna() & d[cols].notna().all(axis=1) & (d.atr>0)
+        valid = delta.notna() & d[cols].notna().all(axis=1) & (d.atr>0)
         frame = d.loc[valid]
         y = target.loc[valid].to_numpy(dtype=int)
         n = len(frame)
