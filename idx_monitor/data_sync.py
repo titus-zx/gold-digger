@@ -16,6 +16,7 @@ def normalize_download(frame, ticker):
     if any(c not in d.columns for c in needed):
         raise ValueError(f"Missing OHLCV for {ticker}")
     d = d.reset_index()
+    d.columns = d.columns.str.lower()
     date_col = "date" if "date" in d.columns else "datetime"
     if date_col not in d.columns:
         raise ValueError("Missing date")
