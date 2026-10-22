@@ -3,12 +3,13 @@ import json
 import math
 from datetime import datetime, timezone
 from pathlib import Path
+from .history import read_history
 
 def gold_dashboard(folder):
     folder = Path(folder)
     report = folder / "report.json"
     if not report.is_file():
-        return {"status":"awaiting_model", "message":"Waiting for the first successful XAUUSD sync and model training; inspect gold-sync logs.", "forecasts":[]}
+        return {"status":"awaiting_model", "message":"Waiting for the first successful XAUUSD sync and model training; inspect gold-sync logs.", "forecasts":[], "history":read_history(folder / "history.sqlite", "gold")}
     data = json.loads(report.read_text(encoding="utf-8"))
     forecasts = []
     for horizon in ("1h","4h","8h","24h"):
@@ -16,7 +17,7 @@ def gold_dashboard(folder):
         latest = item.get("latest_forecast")
         if not latest:
             continue
-        row = {"horizon":horizon, "model":str(item.get("model","-")), "accuracy":item.get("test",{}).get("accuracy"), **latest}
+        row = {"horizon":horizon, "model":str(item.get("model","-")), "accuracy":item.get("test",{}).get("accuracy"), "test_model":item.get("test_model",item.get("model")), **latest}
         for key in ("p_bearish","p_neutral","p_bullish","accuracy"):
             if row.get(key) is not None:
                 value = float(row[key])
@@ -30,5 +31,6 @@ def gold_dashboard(folder):
         stale = age.total_seconds() > 6 * 3600
     return {"status": "stale" if stale else ("ok" if forecasts else "awaiting_model"),
             "metadata": metadata, "forecasts": forecasts,
+            "history": read_history(folder / "history.sqlite", "gold"),
             "message": "Data is over six hours old; market may be closed or sync delayed." if stale
                        else "Forecasts are saved model results, not live quotes."}

@@ -58,6 +58,8 @@ def sync(destination, period="2y", provider=None):
     destination.parent.mkdir(parents=True, exist_ok=True)
     tmp = destination.with_suffix(".tmp")
     result.to_csv(tmp, index=False)
+    from .history import record_idx
+    record_idx(destination.parent / 'idx_history.sqlite', result, pd.Timestamp.now(tz='UTC'))
     os.replace(tmp, destination)
     return len(result)
 

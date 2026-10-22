@@ -38,7 +38,7 @@ services:
     environment:
       GOLD_DATA: /app/data/xau_h1.csv
       GOLD_RESULTS: /app/results/gold
-      GOLD_SYNC_SECONDS: "21600"
+      GOLD_SYNC_SECONDS: "3600"
       GOLD_PROVIDER: "${GOLD_PROVIDER:-tradingview}"
       OMP_NUM_THREADS: "1"
       OPENBLAS_NUM_THREADS: "1"

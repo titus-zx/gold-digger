@@ -69,7 +69,7 @@ class GoldSyncTests(unittest.TestCase):
             report.parent.mkdir()
             data.write_text('original data')
             report.write_text('{"original":true}')
-            frame = pd.DataFrame({'time': [pd.Timestamp('2026-09-02', tz='UTC')]})
+            frame = pd.DataFrame({'time': [pd.Timestamp('2026-09-02', tz='UTC')], 'close':[2000.]})
             def incomplete(args):
                 (args.out / 'report.json').write_text('{}')
             with patch('idx_monitor.gold_sync.download', return_value=frame):

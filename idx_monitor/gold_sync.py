@@ -118,6 +118,19 @@ def refresh(data_path, results_path, now=None, fetch=fetch_month, trainer=None, 
         source, symbol, price_type = SOURCE, "XAUUSD", "bid"
     else:
         raise ValueError("GOLD_PROVIDER must be tradingview or dukascopy")
+    from .history import resolve_gold, feedback, record_gold
+    results_path = Path(results_path)
+    results_path.mkdir(parents=True, exist_ok=True)
+    import hashlib
+    archive_key = hashlib.sha256(f"{source}|{symbol}".encode()).hexdigest()[:16]
+    archive = results_path / f"candles_{archive_key}.csv"
+    if archive.is_file():
+        previous = pd.read_csv(archive, parse_dates=['time'])
+        previous['time'] = pd.to_datetime(previous.time, utc=True)
+        frame = pd.concat([previous,frame], ignore_index=True).drop_duplicates('time',keep='last').sort_values('time').reset_index(drop=True)
+    history_path = results_path / 'history.sqlite'
+    resolve_gold(history_path, frame, source, symbol, now)
+    model_feedback = feedback(history_path, source, symbol, now)
     print(f"{pd.Timestamp.now(tz='UTC')} training XAUUSD on {len(frame)} candles", flush=True)
     data_path, results_path = Path(data_path), Path(results_path)
     data_path.parent.mkdir(parents=True, exist_ok=True)
@@ -126,9 +139,9 @@ def refresh(data_path, results_path, now=None, fetch=fetch_month, trainer=None, 
     with tempfile.TemporaryDirectory(dir=results_path) as staging:
         staging = Path(staging)
         csv_path = staging / "xau_h1.csv"
-        frame.to_csv(csv_path, index=False)
+        frame.tail(10000).to_csv(csv_path, index=False)
         (trainer or run)(argparse.Namespace(xau=csv_path, dxy=None, out=staging,
-                                          threshold_atr=.25, min_prob=.50))
+                                          threshold_atr=.25, min_prob=.50, feedback=model_feedback))
         report_path = staging / "report.json"
         report = json.loads(report_path.read_text())
         if any(not report.get(f"{h}h", {}).get("latest_forecast") for h in (1, 4, 8, 24)):
@@ -137,7 +150,12 @@ def refresh(data_path, results_path, now=None, fetch=fetch_month, trainer=None, 
                               "generated_at_utc": now.isoformat(),
                               "data_as_of_utc": frame.time.iloc[-1].isoformat(),
                               "rows": len(frame)}
+        issued_at = now if trainer is not None else pd.Timestamp.now(tz='UTC')
+        report['metadata']['issued_at_utc'] = issued_at.isoformat()
+        report['metadata']['feedback'] = model_feedback
+        report['metadata']['training_rows'] = min(len(frame),10000)
         report_path.write_text(json.dumps(report, indent=2, allow_nan=False))
+        frame.to_csv(staging / 'candles.csv', index=False)
         # CSV and report are each replaced atomically on their destination filesystem.
         with tempfile.NamedTemporaryFile(dir=data_path.parent, delete=False) as handle:
             pending = Path(handle.name)
@@ -146,9 +164,11 @@ def refresh(data_path, results_path, now=None, fetch=fetch_month, trainer=None, 
             pending.replace(data_path)
         finally:
             pending.unlink(missing_ok=True)
+        (staging / "candles.csv").replace(archive)
         for artifact in staging.iterdir():
             if artifact.name not in ("report.json", "xau_h1.csv"):
                 artifact.replace(results_path / artifact.name)
+        record_gold(history_path, report, issued_at)
         report_path.replace(results_path / "report.json")
     return len(frame)
 
@@ -157,7 +177,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--once", action="store_true")
     args = parser.parse_args()
-    interval = max(3600, int(os.environ.get("GOLD_SYNC_SECONDS", "21600")))
+    interval = max(3600, int(os.environ.get("GOLD_SYNC_SECONDS", "3600")))
     retry = max(30, int(os.environ.get("GOLD_RETRY_SECONDS", "60")))
     while True:
         delay = interval

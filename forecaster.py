@@ -1,5 +1,6 @@
 """XAUUSD multi-horizon directional research. UTC hourly candle-close CSV input."""
 import argparse
+import hashlib
 import json
 from pathlib import Path
 import joblib
@@ -164,7 +165,11 @@ def run(args):
             t,apply = temperature(aligned_probs(model,x.iloc[val]),y[val])
             loss = log_loss(y[val],apply(t),labels=CLASSES)
             fitted.append((loss,name,model,t))
+        selection = getattr(args, "feedback", {}).get(f"{horizon}h", {})
+        preferred = selection.get("preferred_model")
+        selected = next((item for item in fitted if item[1] == preferred), None)
         _,name,model,t = min(fitted,key=lambda item:item[0])
+        test_model = name
         def calibrated(z):
             raw = aligned_probs(model,z)
             logits = np.log(np.clip(raw,1e-9,1))/t
@@ -176,7 +181,7 @@ def run(args):
         baseline = np.full(len(test),np.bincount(y[train],minlength=3).argmax())
         rules = rule_signal(frame.iloc[test],bool(args.dxy))
         report[f"{horizon}h"] = {
-            "model":name,"test_start":str(frame.index[test[0]]),
+            "model":name,"selection":selection or {"reason":"chronological_validation"},"test_start":str(frame.index[test[0]]),
             "test_end":str(frame.index[test[-1]]),
             "test":score(y[test],pred,prob),
             "rule_based":score(y[test],rules),
@@ -185,14 +190,30 @@ def run(args):
             "predicted":NAMES[pred],"p_bearish":prob[:,0],
             "p_neutral":prob[:,1],"p_bullish":prob[:,2]}).to_csv(
                 out/f"predictions_{horizon}h.csv",index=False)
+        if selected is not None:
+            _,name,model,t = selected
+        report[f"{horizon}h"]["test_model"] = test_model
+        report[f"{horizon}h"]["model"] = name
         latest = d.dropna(subset=cols).iloc[[-1]]
         p = calibrated(latest[cols])[0]
         choice = int(p.argmax()) if p.max()>=args.min_prob else 1
         report[f"{horizon}h"]["latest_forecast"] = {
             "as_of_utc":str(latest.index[-1]),"direction":str(NAMES[choice]),
             "p_bearish":float(p[0]),"p_neutral":float(p[1]),"p_bullish":float(p[2])}
+        candidate_probs = {}
+        for _, candidate_name, candidate_model, candidate_temperature in fitted:
+            logits = np.log(np.clip(aligned_probs(candidate_model, latest[cols])[0],1e-9,1))/candidate_temperature
+            weights = np.exp(logits-logits.max())
+            candidate_probs[candidate_name] = (weights/weights.sum()).tolist()
+        report[f"{horizon}h"]["forecast_snapshot"] = {
+            "base_price":float(latest.close.iloc[0]),
+            "band":float(args.threshold_atr*latest.atr.iloc[0]),
+            "threshold_atr":float(args.threshold_atr),"min_prob":float(args.min_prob),
+            "features":{key:float(latest[key].iloc[0]) for key in cols},
+            "candidate_probabilities":candidate_probs}
         joblib.dump({"model":model,"temperature":t,"features":cols,
                      "min_prob":args.min_prob},out/f"model_{horizon}h.joblib")
+        report[f"{horizon}h"]["model_version"] = hashlib.sha256((out/f"model_{horizon}h.joblib").read_bytes()).hexdigest()
         print(f"{horizon}h {name}: accuracy={report[f'{horizon}h']['test']['accuracy']:.3f}")
     (out/"report.json").write_text(json.dumps(report,indent=2),encoding="utf-8")
 
